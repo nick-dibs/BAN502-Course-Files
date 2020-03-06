@@ -1,0 +1,179 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+options(tidyverse.quiet = TRUE)
+library(tidyverse)
+library(caret)
+library(nnet)
+library(rpart)
+library(caretEnsemble)
+library(ranger)
+parole <- read_csv("parole.csv")
+parole = parole %>% 
+  mutate(male = as.factor(male)) %>%
+  mutate(male = fct_recode(male, "No" = "0","Yes" = "1")) %>%
+  mutate(race = as.factor(race)) %>%
+  mutate(race = fct_recode(race, "White" = "1", "NotWhite" = "2")) %>%
+  mutate(state = as.factor(state)) %>%
+  mutate(state = fct_recode(state, "Kentucky" = "2", "Louisiana" = "3", "Virginia" = "4", "Other" = "1")) %>%
+  mutate(crime = as.factor(crime)) %>%
+  mutate(crime = fct_recode(crime, "Larceny" = "2", "Drugs" = "3", "Driving" = "4", "OtherCrime" = "1")) %>%
+  mutate(multiple.offenses = as.factor(multiple.offenses)) %>%
+  mutate(multiple.offenses = fct_recode(multiple.offenses, "Multiple" = "1", "Singular" = "0")) %>%
+  mutate(violator = as.factor(violator)) %>%
+  mutate(violator = fct_recode(violator, "Violation" = "1", "NoViolation" = "0"))
+str(parole)
+summary(parole)
+```
+
+```{r}
+set.seed(12345)
+train.rows = createDataPartition(y = parole$violator, p=0.7, list = FALSE)
+train = parole[train.rows,]
+test = parole[-train.rows,]
+```
+
+```{r task2}
+start_time = Sys.time() #for timing
+fitControl = trainControl(method = "cv", 
+                           number = 10)
+
+nnetGrid <-  expand.grid(size = 12, decay = 0.1)
+
+set.seed(1234)
+nnetBasic = train(x=as.data.frame(train[,-9]), y= train$violator,
+                 method = "nnet",
+                 tuneGrid = nnetGrid,
+                 trControl = fitControl,
+                 trace = FALSE,
+                 verbose = FALSE)
+
+end_time = Sys.time()
+end_time-start_time
+```
+
+```{r task3}
+nnetBasic
+predNetBasic = predict(nnetBasic, train)
+confusionMatrix(predNetBasic, train$violator, positive = "NoViolation")
+```
+
+**Task 3 response: Using our model, we can see a 0.945 accuracy rate on the training data set, which indicates that our neural network fits extremely well with the training data set, and is more accurate than the naive model at 0.8837.  With the accuracy as high as it is, I am concerned it might be overfitting the training data.**
+
+```{r task4}
+start_time = Sys.time() #for timing
+fitControl = trainControl(method = "cv", 
+                           number = 10)
+
+nnetGrid =  expand.grid(size = seq(from = 1, to = 12, by = 1), #rule of thumb --> between # of input and # of output layers
+                        decay = seq(from = 0.1, to = 0.5, by = 0.1))
+set.seed(1234)
+nnetFit = train(x=as.data.frame(train[,-9]), y=train$violator, 
+                 method = "nnet",
+                 trControl = fitControl,
+                 tuneGrid = nnetGrid,
+                 trace= FALSE,
+                 verbose = FALSE)
+
+end_time = Sys.time()
+end_time-start_time
+```
+
+```{r task5}
+nnetFit
+predNetFit = predict(nnetFit,train)
+confusionMatrix(predNetFit, train$violator, positive = "NoViolation")
+```
+
+**Task 5 response: Using the optimal model from the neural network (at size 2, decay 0.4), we achieved an accuracy of 0.8922, which is lower than the model we built in Task 2, but still slightly higher than the naive model.**
+
+```{r task6}
+predNetBasic = predict(nnetBasic, test)
+confusionMatrix(predNetBasic, test$violator, positive = "NoViolation")
+```
+
+**Task 6 response: Applying our defined model from Task 2, it appears that there is a decline in performance on the testing data, as accuracy falls to 0.8911.  This is still higher than the naive model, but a significant decline from the accuracy of how the model performed on training data.**
+```{r task7}
+predNetFit = predict(nnetFit,test)
+confusionMatrix(predNetFit, test$violator, positive = "NoViolation")
+```
+
+**Task 7 response: The optimal neural network outperformed our defined network with an accuracy of 0.896, and also was very close to its performance against the training data.  Judging from the results, I would think that this is the more reliable model when handling new/"unseen" data, as the results are more stable, and less reliant on the training data set.**
+
+**Task 8 response:  As mentioned earlier, I was concerned that our defined neural network would be overfitting the data, and seeing a sharp decline in accuracy when applied to the test data (as compared to the optimal neural network, which was consistent against both data sets), I think it is a fair statement to make that the defined neural network in task 2 was overfitting our data, and that we should use the optimal neural network for any future predictions of parole violations.**
+
+```{r task9}
+control = trainControl(
+  method = "cv",
+  number = 5,
+  savePredictions = "final",
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+  )
+
+set.seed(111)
+model_list = caretList(x=as.data.frame(train[,-9]),y=as.matrix(train$violator),
+  metric = "ROC", 
+  trControl= control,
+  methodList = c("glm"),
+  tuneList=list(
+    rf = caretModelSpec(method="ranger", tuneLength=6),
+    rpart = caretModelSpec(method="rpart", tuneLength=6),
+    nn = caretModelSpec(method="nnet", tuneLength=6, trace=FALSE)))
+```
+
+```{r}
+as.data.frame(predict(model_list, newdata=head(train)))
+modelCor(resamples(model_list))
+```
+
+```{r}
+ensemble = caretEnsemble(
+  model_list, 
+  metric="ROC",
+  trControl=trainControl(
+    method = "cv", #cross-validation during ensembling
+    number= 5, #number of folds
+    summaryFunction=twoClassSummary,
+    classProbs=TRUE
+    ))
+summary(ensemble)
+```
+
+**Task 9 response (part 1): It appears that the neural network and glm methods are correlated, but other than that there does not seem to be a very strong correlation between any of the other models.  The ensemble calculated a ROC of 0.8422, which is better than the random forest and rpart models, but the glm and neural networks seem to produce strong/more accurate models.  Let's evaluate the ensemble against the training and testing sets and see how they do below.**
+
+```{r}
+pred_ensemble = predict(ensemble, train, type = "raw")
+confusionMatrix(pred_ensemble,train$violator)
+pred_ensemble_test = predict(ensemble, test, type = "raw")
+confusionMatrix(pred_ensemble_test,test$violator)
+```
+
+**Task 9 response (part 2): The ensemble is more accurate than the naive model, coming in at 0.9535 on the training data, and 0.901 on the testing data.  It also performed marginally better than the two neural networks that we established earlier in this exercise, so it is our best model to date (by a slight margin).**
+
+```{r}
+stack = caretStack(
+  model_list,
+  method ="glm", 
+  metric ="ROC",
+  trControl = trainControl(
+    method = "cv",
+    number = 5,
+    savePredictions = "final",
+    classProbs = TRUE,
+    summaryFunction = twoClassSummary
+  )
+)
+
+print(stack)
+
+pred_stack = predict(stack, train, type = "raw")
+confusionMatrix(pred_stack,train$violator)
+pred_stack_test = predict(stack, test, type = "raw")
+confusionMatrix(pred_stack_test,test$violator)
+```
+
+**Task 10 Response: There is no noticable difference between the stacked ensemble and non-stacked ensemble, they performed basically the same on both data sets.  Both were stronger/more accurate on the training data than the testing data, but both are also more accurate than the naive model and more accurate than the individual models within the ensemble, and more accurate than the neural networks we were building earlier in this exercise.**

@@ -1,0 +1,90 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(tidyverse)
+library(cluster)
+library(factoextra)
+library(dendextend)
+trucks <- read_csv("trucks.csv")
+wine <- read_csv("wineprice.csv")
+
+```
+
+```{r}
+ggplot(trucks,aes(Distance,Speeding))+
+  geom_point()
+```
+
+**Task 1 response - there does seem to be some natural clustering of drivers; there is a very clear cluster of drivers of approx. 25-75 miles who spend 0-12.5% of their time speeding, and another clear cluster of drivers who travel between 150-225 miles and are speeding 0-25% of the time.  If we wanted to spread it out to another cluster, there is another group of drivers in the 25-75 mile range that speeds between 25-50% of the time, and a very wide/scattered cluster of drivers in the second travel range (150-225) that speed significantly more, from 50-100%, but these are far less common than the other three clusters named.**
+
+```{r task2}
+trucks2 = data.frame(trucks %>% select(-Driver_ID))
+trucks2 = as.data.frame(scale(trucks2))
+```
+
+```{r task3}
+set.seed(1234)
+clusters1 <-kmeans(trucks2,2)
+fviz_cluster(clusters1,trucks2)
+```
+
+**Task 3 response: By splitting the data in to two clusters, there is one group of the approx 12.5% and less speeders, and the 12.5% and more speeders.  I don't feel like this accurately depicts the data, which is why when I did my visualization in task 1, I separated in to 4 clusters; I don't think that the people who are traveling 200-ish miles and speeding the entire time should be bucketed with someone traveling 50 miles, speeding 20% of the time, and under this clustering, that's how they are grouped.**
+
+```{r task4}
+set.seed(123)
+fviz_nbclust(trucks2,kmeans,method = "wss")
+set.seed(123)
+fviz_nbclust(trucks2,kmeans,method = "silhouette")
+```
+
+**Task 4 response: There is a clear consensus between the wss and silhouette methods that 4 clusters is the optimal number of clusters to analyze this data; this confirms my initial visualization in task 1.**
+
+```{r task5}
+set.seed(1234)
+clusters1 <-kmeans(trucks2,4)
+fviz_cluster(clusters1,trucks2)
+```
+
+**Task 6 response: The four clusters built by R are different than the ones I had identified, but looking at it with the colored separation of the groups, I think it actually makes a lot of sense.  Because a significant portion of the data speeds at a lower percentage, it makes sense for cluster 1 in red to be so expansive - it has to capture all of the "excessive" speeders.  The cluster that I had built of 150-225 miles with speeding between 0-25% seems to be split by the median speeding percentage there, and just judging off the frequency of the data points, I think that makes more sense than how I had it.  This is a largely logical clustering, and much better than the two clusters we had built initially.**
+
+```{r task6.5}
+wine2 = wine %>% select(-Year,-FrancePop)
+wine2 = as.data.frame(scale(wine2))
+```
+
+```{r task7}
+set.seed(123)
+fviz_nbclust(wine2,kmeans,method = "wss")
+set.seed(123)
+fviz_nbclust(wine2,kmeans,method = "silhouette")
+```
+
+**Task 7 response: The silhouette method decides that the optimal number of clusters is 5, but the wss method is a little less clear, and I think it could be 5 or 6, since there is still a large jump between those numbers before it really smooths out.  However, since both methods did populate 5 as a potential optimal value, that is what we will go with for the future testing.**
+
+```{r task8}
+set.seed(1234)
+clusters2 <-kmeans(wine2,5)
+fviz_cluster(clusters2,wine2)
+```
+
+```{r task9}
+m = c("average","single","complete","ward")
+names(m) = c("average","single","complete","ward")
+
+ac = function(x) {
+  agnes(wine2,method = x)$ac #change customers_scaled to name of data set
+}
+map_dbl(m,ac)
+
+hc =agnes(wine2,method="ward")
+pltree(hc,cex = 0.6, hang = -1, main = "Agglomerative Dendrogram")
+```
+
+```{r task10}
+hc2 = diana(wine2)
+pltree(hc2, cex = 0.6, hang = -1, main = "Divise Dendogram")
+```
+

@@ -1,0 +1,63 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(caret)
+  library(ranger)
+  })
+blood = read.csv("Blood.csv")
+blood = blood %>%
+  mutate(DonatedMarch = as.factor(DonatedMarch)) %>%
+  mutate(DonatedMarch = fct_recode(DonatedMarch, "No" = "0","Yes" = "1"))
+```
+
+```{r task1}
+set.seed(1234)
+train.rows = createDataPartition(y = blood$DonatedMarch, p=0.7, list = FALSE)
+train = blood[train.rows,]
+test = blood[-train.rows,]
+```
+
+```{r task2}
+fit_control = trainControl(method = "cv",  
+                           number = 10)
+
+set.seed(123)  
+rf_fit = train(x=as.matrix(train[,-5]), y=as.matrix(train$DonatedMarch),
+                 method = "ranger", 
+                 importance = "permutation",
+                 num.trees = 100,
+                 trControl = fit_control)
+```
+
+```{r task3}
+varImp(rf_fit)
+rf_fit
+```
+
+**Task 3 response: the most important variable is the TotalDonations, and the least important is Mnths_Since_Last.**
+
+```{r task4}
+predRF = predict(rf_fit, train)
+head(predRF)
+```
+
+```{r task5}
+confusionMatrix(predRF,train$DonatedMarch,positive = "Yes")
+```
+
+**Task 5 & 6 responses: The accuracy of our model on the training set is 0.9027, with a sensitivity of 0.6560 and specificity of 0.9799.  Our model is significantly better than the naive model, which has an accuracy of 0.7615.**
+
+```{r task7}
+predRF_test = predict(rf_fit, test)
+head(predRF_test)
+confusionMatrix(predRF_test,test$DonatedMarch,positive = "Yes")
+```
+
+**Task 7 response: It appears that the model might be overfitting our training set, as the accuracy on the test data comes in at 0.7723, which is still better than the naive model of 0.7634, but obviously much closer than the accuracy of our training set.  Also, unlike the training set confusion matrix, the p-value between models is not significant, indicating that perhaps there is not a material difference between our predictions and the naive model.  I think the model would still be valuable though, since the accuracy is still higher, I would have confidence in our model being able to predict blood donations in the month of March.**
+
+**Task 8 response: I think this would be a good real-world application for the organization collecting this data to estimate the amount of blood they are expecting to receive in the month of march.  It could also help them identify the people most likely to donate again, and send them targeted marketing to remind them about upcoming drives, and not waste time or resources sending materials to people designated as unlikely to donate again by our model, so we could get some cost savings on more specific marketing as well as build a forecast of future collection.  The concern I have is the one I mentioned in task 7 above, that our model might be overfitting the training data set; however, perhaps we could have used a higher number of trees to build a more comprehensive random forest and improve the model for data that it hasn't seen yet.  Despite my fear of overfitting, the accuracy of the model with testing data was still higher than the naive model, so I think it's appropriate to suggest that it would handle more predictions well and give the organization strong estimates.**
